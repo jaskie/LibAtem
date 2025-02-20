@@ -93,6 +93,16 @@ namespace LibAtem.Commands
             }
         }
 
+        public static bool operator ==(CommandQueueKey left, CommandQueueKey right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(CommandQueueKey left, CommandQueueKey right)
+        {
+            return !left.Equals(right);
+        }
+
         #endregion IEquatable
     }
 }

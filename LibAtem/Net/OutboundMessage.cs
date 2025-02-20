@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -36,7 +37,7 @@ namespace LibAtem.Net
         }
     }
 
-    public class OutboundMessageBuilder
+    public class OutboundMessageBuilder: IDisposable
     {
         private const int maxLength = AtemConstants.MaxPacketLength - ReceivedPacket.HeaderLength;
 
@@ -83,6 +84,12 @@ namespace LibAtem.Net
         public OutboundMessage Create()
         {
             return new OutboundMessage(OutboundMessage.OutboundMessageType.Command, current.ToArray());
+        }
+
+        public void Dispose()
+        {
+            current.Dispose();
+            writer.Dispose();
         }
     }
 }

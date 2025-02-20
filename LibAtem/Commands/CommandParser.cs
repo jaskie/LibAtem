@@ -1,18 +1,17 @@
 ﻿using System;
-using log4net;
 
 namespace LibAtem.Commands
 {
     public static class CommandParser
     {
-        private static readonly ILog Log = LogManager.GetLogger(typeof(CommandParser));
+        private static readonly NLog.Logger Log = NLog.LogManager.GetCurrentClassLogger();
 
         public static ICommand Parse(ProtocolVersion protocolVersion, ParsedCommandSpec rawCmd)
         {
             Type commandType = CommandManager.FindForName(rawCmd.Name, protocolVersion);
             if (commandType == null)
             {
-                Log.WarnFormat("Unknown command {0} with content {1}", rawCmd.Name, BitConverter.ToString(rawCmd.Body));
+                Log.Warn("Unknown command {0} with content {1}", rawCmd.Name, BitConverter.ToString(rawCmd.Body));
                 return null;
             }
 
@@ -22,7 +21,7 @@ namespace LibAtem.Commands
             }
             catch (Exception e)
             {
-                LogManager.GetLogger(commandType).Error(e);
+                NLog.LogManager.GetLogger(commandType.Name).Error(e);
                 return null;
             }
         }

@@ -1,10 +1,11 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace LibAtem.Util
 {
-    public class UniqueQueue<TKey, TVal>
+    public class UniqueQueue<TKey, TVal>: IDisposable
     {
         private readonly BlockingCollection<TKey> idQueue;
         private readonly Dictionary<TKey, TVal> entries;
@@ -50,6 +51,11 @@ namespace LibAtem.Util
             // recurse until we find one that isnt corrupt
             Debug.Fail("Failed to find entry for key");
             return default(TVal);
+        }
+
+        public void Dispose()
+        {
+            idQueue.Dispose();
         }
     }
 }

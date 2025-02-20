@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using log4net;
 using LibAtem.Commands;
 using LibAtem.Commands.DeviceProfile;
 using LibAtem.MacroOperations;
@@ -14,9 +13,9 @@ using System.Diagnostics;
 
 namespace LibAtem.Net
 {
-    public abstract class AtemConnection
+    public abstract class AtemConnection : IDisposable
     {
-        private static readonly ILog Log = LogManager.GetLogger(typeof(AtemConnection));
+        private static readonly NLog.Logger Log = NLog.LogManager.GetCurrentClassLogger();
 
         private const int TimeOutMilliseonds = 1000;
         private const uint MaxPacketId = 1 << 15; // Atem expects 15 not 16 bits before wrapping
@@ -159,7 +158,7 @@ namespace LibAtem.Net
                 // If we have skipped something, then discard
                 if (packet.CommandCode.HasFlag(ReceivedPacket.CommandCodeFlags.AckRequest) && packet.PacketId != IncrementPacketId(_readyToAck.GetValueOrDefault(0)))
                 {
-                    Log.DebugFormat("{0} - Discarding message received out of order Got:{1} Expected:{2}", Endpoint, packet.PacketId, _readyToAck);
+                    Log.Debug("{0} - Discarding message received out of order Got:{1} Expected:{2}", Endpoint, packet.PacketId, _readyToAck);
                     return;
                 }
 
@@ -169,7 +168,7 @@ namespace LibAtem.Net
                     QueueOrSendAck(socket, packet.PacketId);
                 }
 
-                Log.DebugFormat("{0} - Command {1}, Length {2}, Session {3:X}, Acked {4}, Packet {5}", Endpoint,
+                Log.Debug("{0} - Command {1}, Length {2}, Session {3:X}, Acked {4}, Packet {5}", Endpoint,
                     packet.CommandCode, packet.PayloadLength, packet.SessionId, packet.AckedId, packet.PacketId);
 
                 if (packet.CommandCode.HasFlag(ReceivedPacket.CommandCodeFlags.AckReply))
@@ -181,7 +180,7 @@ namespace LibAtem.Net
                 }
                 if (packet.CommandCode.HasFlag(ReceivedPacket.CommandCodeFlags.AckRequest))
                 {
-                    Log.DebugFormat("{0} - Parsed {1} commands with length {2}", Endpoint, packet.Commands.Count, packet.PayloadLength);
+                    Log.Debug("{0} - Parsed {1} commands with length {2}", Endpoint, packet.Commands.Count, packet.PayloadLength);
 
                     _processQueue.Add(packet);
                     OnReceivePacket?.Invoke(this, packet);
@@ -206,7 +205,7 @@ namespace LibAtem.Net
                 {
                     // Don't print full command, if it is really long for performance reasons 
                     string payloadStr = rawCmd.Body.Length > 100 ? "of " + rawCmd.Body.Length + " bytes" : BitConverter.ToString(rawCmd.Body);
-                    Log.DebugFormat("{0} - Received command {1} with content {2}", Endpoint, rawCmd.Name, payloadStr);
+                    Log.Debug("{0} - Received command {1} with content {2}", Endpoint, rawCmd.Name, payloadStr);
 
                     var cmd = CommandParser.Parse(_protocolVersion ?? ProtocolVersion.Minimum, rawCmd);
                     if (cmd is VersionCommand verCmd)
@@ -332,7 +331,7 @@ namespace LibAtem.Net
                     if (_inFlight.Any(m => GetTimeBetween(m.LastSent, now) > InFlightTimeout))
                     {
                         List<InFlightMessage> toResend = _inFlight.ToList();
-                        Log.WarnFormat("{0} - Resending {1} packets from #{2}", Endpoint, toResend.Count, toResend[0].Message.PacketId);
+                        Log.Warn("{0} - Resending {1} packets from #{2}", Endpoint, toResend.Count, toResend[0].Message.PacketId);
                         return toResend;
                     }
                 }
@@ -384,11 +383,11 @@ namespace LibAtem.Net
             }
             catch (SocketException e)
             {
-                Log.ErrorFormat("Send failed: {0}", e);
+                Log.Error(e, "Send failed");
             }
             catch (ObjectDisposedException)
             {
-                Log.ErrorFormat("{0} - Discarding message due to socket being disposed", Endpoint);
+                Log.Warn("{0} - Discarding message due to socket being disposed", Endpoint);
                 // Mark as timed out. This will cause it to be cleaned up shortly
                 _lastReceivedTime = DateTime.MinValue;
 
@@ -453,6 +452,11 @@ namespace LibAtem.Net
                 return buffer;
 
             return buffer.Concat(msg.Message.Payload).ToArray();
+        }
+
+        public void Dispose()
+        {
+            _processQueue.Dispose();
         }
     }
 }

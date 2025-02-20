@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using log4net;
 using LibAtem.Serialization;
 
 namespace LibAtem.Commands
@@ -69,7 +68,7 @@ namespace LibAtem.Commands
 
     public static class CommandManager
     {
-        private static readonly ILog Log = LogManager.GetLogger(typeof(CommandManager));
+        private static readonly NLog.Logger Log = NLog.LogManager.GetCurrentClassLogger();
 
         private static IReadOnlyDictionary<string, List<Tuple<ProtocolVersion, Type>>> commandTypes;
         private static IReadOnlyDictionary<Type, Tuple<string, ProtocolVersion>> commandNames;
@@ -94,7 +93,7 @@ namespace LibAtem.Commands
                         resultTypesForName = new List<Tuple<ProtocolVersion, Type>>();
 
                     if (resultTypesForName.Count(t => t.Item1 == attribute.MinimumVersion) > 0)
-                        Log.FatalFormat("Duplicate definition for {0} for version {1}", attribute.Name, attribute.MinimumVersion);
+                        Log.Error("Duplicate definition for {0} for version {1}", attribute.Name, attribute.MinimumVersion);
 
                     resultTypesForName.Add(Tuple.Create(attribute.MinimumVersion, type));
 
@@ -107,7 +106,7 @@ namespace LibAtem.Commands
             }
             catch (Exception e)
             {
-                Log.FatalFormat("Failed to find all valid command types: {0}", e.Message);
+                Log.Error(e.Message, "Failed to find all valid command types: {0}", e.Message);
                 throw;
             }
         }

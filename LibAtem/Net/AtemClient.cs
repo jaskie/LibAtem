@@ -4,8 +4,6 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
-using System.Threading.Tasks;
-using log4net;
 using LibAtem.Commands;
 using LibAtem.Net.DataTransfer;
 
@@ -13,7 +11,7 @@ namespace LibAtem.Net
 {
     public class AtemClient : IDisposable
     {
-        private static readonly ILog Log = LogManager.GetLogger(typeof(AtemClient));
+        private static readonly NLog.Logger Log = NLog.LogManager.GetCurrentClassLogger();
 
         private readonly UdpClient _client;
         private readonly IPEndPoint _remoteEp;
@@ -87,7 +85,7 @@ namespace LibAtem.Net
                     if (_connection.ConnectionVersion != null)
                         OnDisconnect?.Invoke(this);
 
-                    Log.InfoFormat("Attempting Reconnect");
+                    Log.Info("Attempting Reconnect");
                     _connection.ResetConnStatsInfo();
                     _connection.SessionId = new Random().Next(32767);
                     SendHandshake();
@@ -96,7 +94,7 @@ namespace LibAtem.Net
             }
             catch (SocketException e)
             {
-                Log.DebugFormat("Failed to reconnect: {0}", e);
+                Log.Debug("Failed to reconnect: {0}", e);
             }
 
             return true;
@@ -149,7 +147,7 @@ namespace LibAtem.Net
                     int rawCount = cmds.Count;
 
                     cmds = cmds.Where(c => !DataTransfer.HandleCommand(c)).ToList();
-                    Log.DebugFormat("Recieved {0} commands. {1} to be handle by user code", rawCount, cmds.Count);
+                    Log.Debug("Recieved {0} commands. {1} to be handle by user code", rawCount, cmds.Count);
 
                     if (cmds.Any())
                         OnReceive?.Invoke(this, cmds);
@@ -174,7 +172,7 @@ namespace LibAtem.Net
                 0x01, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00
             };
 
-            Log.DebugFormat("Starting handshake");
+            Log.Debug("Starting handshake");
             _client.SendAsync(handshake, handshake.Length, _remoteEp);
         }
 
@@ -193,7 +191,7 @@ namespace LibAtem.Net
 
                         if (packet.CommandCode.HasFlag(ReceivedPacket.CommandCodeFlags.Handshake))
                         {
-                            Log.DebugFormat("Completed handshake");
+                            Log.Debug("Completed handshake");
                             DataTransfer.Reset();
                             _connection.SendAckNow(_client.Client, true);
                             continue;
@@ -203,14 +201,14 @@ namespace LibAtem.Net
                         if (_connection.SessionId != packet.SessionId)
                         {
                             _connection.SessionId = (int)packet.SessionId;
-                            Log.InfoFormat("Got new session id: {0}", packet.SessionId);
+                            Log.Info("Got new session id: {0}", packet.SessionId);
                         }
 
                         _connection.Receive(_client.Client, packet);
                     }
                     catch (SocketException)
                     {
-                        Log.ErrorFormat("Socket Exception");
+                        Log.Error("Socket Exception");
                     }
                 }
             });
@@ -231,11 +229,12 @@ namespace LibAtem.Net
 
         public void Dispose()
         {
-            // TODO
-
             DataTransfer?.Dispose();
 
             _timeoutTimer?.Dispose();
+            _ackTimer?.Dispose();
+            _client.Dispose();
+            _connection.Dispose();
         }
 
         public bool HasQueuedOutbound()

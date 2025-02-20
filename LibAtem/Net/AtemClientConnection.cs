@@ -2,14 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using log4net;
 using LibAtem.Commands;
 
 namespace LibAtem.Net
 {
     public class AtemClientConnection : AtemConnection
     {
-        private static readonly ILog Log = LogManager.GetLogger(typeof(AtemConnection));
+        private static readonly NLog.Logger Log = NLog.LogManager.GetCurrentClassLogger();
 
         private readonly List<ICommand> _queuedCommands;
 
@@ -33,22 +32,23 @@ namespace LibAtem.Net
                 if (!_queuedCommands.Any())
                     return null;
 
-                var builder = new OutboundMessageBuilder();
-
-                int removeCount = 0;
-                foreach (ICommand cmd in _queuedCommands)
+                using (var builder = new OutboundMessageBuilder())
                 {
-                    byte[] data = cmd.ToByteArray();
-                    if (!builder.TryAddData(data))
-                        break;
+                    int removeCount = 0;
+                    foreach (ICommand cmd in _queuedCommands)
+                    {
+                        byte[] data = cmd.ToByteArray();
+                        if (!builder.TryAddData(data))
+                            break;
 
-                    //Log.DebugFormat("{0} - Sending command {1} with content {2}", Endpoint, CommandNameAttribute.GetName(cmd.GetType()), BitConverter.ToString(data));
-                    
-                    removeCount++;
+                        //Log.DebugFormat("{0} - Sending command {1} with content {2}", Endpoint, CommandNameAttribute.GetName(cmd.GetType()), BitConverter.ToString(data));
+
+                        removeCount++;
+                    }
+
+                    _queuedCommands.RemoveRange(0, removeCount);
+                    return builder.Create();
                 }
-
-                _queuedCommands.RemoveRange(0, removeCount);
-                return builder.Create();
             }
         }
 
