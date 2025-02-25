@@ -21,7 +21,9 @@ namespace LibAtem.Net
         private Timer _ackTimer;
         private Thread _sendThread;
         private Thread _handleThread;
+        private Thread _receiveThread;
         private bool _run;
+        private readonly CancellationTokenSource _shutdownTokenSource = new CancellationTokenSource();
 
         public delegate void CommandHandler(object sender, IReadOnlyList<ICommand> commands);
         public delegate void ConnectedHandler(object sender);
@@ -124,9 +126,9 @@ namespace LibAtem.Net
 
         private void StartSendingTimer()
         {
-            _sendThread = new Thread(o =>
+            _sendThread = new Thread(() =>
             {
-                while (!_connection.HasTimedOut)
+                while (_run && !_connection.HasTimedOut)
                 {
                     if (!_connection.TrySendQueued(_client.Client))
                         Thread.Sleep(1);
@@ -139,15 +141,16 @@ namespace LibAtem.Net
 
         private void StartHandleThread()
         {
-            _handleThread = new Thread(o =>
+
+            _handleThread = new Thread(() =>
             {
-                while (_run || _connection.HasCommandsToProcess)
+                while (_run)
                 {
-                    List<ICommand> cmds = _connection.GetNextCommands();
+                    List<ICommand> cmds = _connection.GetNextCommands(_shutdownTokenSource.Token);
                     int rawCount = cmds.Count;
 
                     cmds = cmds.Where(c => !DataTransfer.HandleCommand(c)).ToList();
-                    Log.Debug("Recieved {0} commands. {1} to be handle by user code", rawCount, cmds.Count);
+                    Log.Trace("Recieved {0} commands. {1} to be handle by user code", rawCount, cmds.Count);
 
                     if (cmds.Any())
                         OnReceive?.Invoke(this, cmds);
@@ -176,45 +179,49 @@ namespace LibAtem.Net
             _client.SendAsync(handshake, handshake.Length, _remoteEp);
         }
 
+        private void ReceiveThreadProc()
+        {
+            while (_run)
+            {
+                try
+                {
+                    IPEndPoint ep = _remoteEp;
+                    byte[] data = _client.Receive(ref ep);
+
+                    ReceivedPacket packet = new ReceivedPacket(data);
+
+                    if (packet.CommandCode.HasFlag(ReceivedPacket.CommandCodeFlags.Handshake))
+                    {
+                        Log.Debug("Completed handshake");
+                        DataTransfer.Reset();
+                        _connection.SendAckNow(_client.Client, true);
+                        continue;
+                    }
+
+                    // TODO - should this only be allowed once?
+                    if (_connection.SessionId != packet.SessionId)
+                    {
+                        _connection.SessionId = (int)packet.SessionId;
+                        Log.Info("Got new session id: {0}", packet.SessionId);
+                    }
+
+                    _connection.Receive(_client.Client, packet);
+                }
+                catch (SocketException)
+                {
+                    Log.Error("Socket Exception");
+                }
+            }
+        }
+
         private void StartReceiving()
         {
-            var thread = new Thread(() =>
+            _receiveThread = new Thread(ReceiveThreadProc)
             {
-                while (_run)
-                {
-                    try
-                    {
-                        IPEndPoint ep = _remoteEp;
-                        byte[] data = _client.Receive(ref ep);
-
-                        ReceivedPacket packet = new ReceivedPacket(data);
-
-                        if (packet.CommandCode.HasFlag(ReceivedPacket.CommandCodeFlags.Handshake))
-                        {
-                            Log.Debug("Completed handshake");
-                            DataTransfer.Reset();
-                            _connection.SendAckNow(_client.Client, true);
-                            continue;
-                        }
-
-                        // TODO - should this only be allowed once?
-                        if (_connection.SessionId != packet.SessionId)
-                        {
-                            _connection.SessionId = (int)packet.SessionId;
-                            Log.Info("Got new session id: {0}", packet.SessionId);
-                        }
-
-                        _connection.Receive(_client.Client, packet);
-                    }
-                    catch (SocketException)
-                    {
-                        Log.Error("Socket Exception");
-                    }
-                }
-            });
-            thread.Name = "LibAtem.Receive";
-            thread.IsBackground = true;
-            thread.Start();
+                Name = "LibAtem.Receive",
+                IsBackground = true
+            };
+            _receiveThread.Start();
         }
 
         public void SendCommand(ICommand cmd)
@@ -230,6 +237,11 @@ namespace LibAtem.Net
         public void Dispose()
         {
             DataTransfer?.Dispose();
+            _run = false;
+            _shutdownTokenSource.Cancel();
+            _receiveThread?.Join();
+            _sendThread?.Join();
+            _handleThread?.Join();
 
             _timeoutTimer?.Dispose();
             _ackTimer?.Dispose();

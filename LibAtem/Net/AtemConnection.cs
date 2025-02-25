@@ -10,6 +10,7 @@ using LibAtem.MacroOperations;
 using LibAtem.Serialization;
 using LibAtem.Util;
 using System.Diagnostics;
+using System.Threading;
 
 namespace LibAtem.Net
 {
@@ -168,7 +169,7 @@ namespace LibAtem.Net
                     QueueOrSendAck(socket, packet.PacketId);
                 }
 
-                Log.Debug("{0} - Command {1}, Length {2}, Session {3:X}, Acked {4}, Packet {5}", Endpoint,
+                Log.Trace("{0} - Command {1}, Length {2}, Session {3:X}, Acked {4}, Packet {5}", Endpoint,
                     packet.CommandCode, packet.PayloadLength, packet.SessionId, packet.AckedId, packet.PacketId);
 
                 if (packet.CommandCode.HasFlag(ReceivedPacket.CommandCodeFlags.AckReply))
@@ -180,7 +181,7 @@ namespace LibAtem.Net
                 }
                 if (packet.CommandCode.HasFlag(ReceivedPacket.CommandCodeFlags.AckRequest))
                 {
-                    Log.Debug("{0} - Parsed {1} commands with length {2}", Endpoint, packet.Commands.Count, packet.PayloadLength);
+                    Log.Trace("{0} - Parsed {1} commands with length {2}", Endpoint, packet.Commands.Count, packet.PayloadLength);
 
                     _processQueue.Add(packet);
                     OnReceivePacket?.Invoke(this, packet);
@@ -194,18 +195,16 @@ namespace LibAtem.Net
             }
         }
 
-        public bool HasCommandsToProcess => _processQueue.Count > 0;
-
-        public List<ICommand> GetNextCommands()
+        public List<ICommand> GetNextCommands(CancellationToken token)
         {
             try
             {
                 var result = new List<ICommand>();
-                foreach (ParsedCommandSpec rawCmd in _processQueue.Take().Commands)
+                foreach (ParsedCommandSpec rawCmd in _processQueue.Take(token).Commands)
                 {
                     // Don't print full command, if it is really long for performance reasons 
                     string payloadStr = rawCmd.Body.Length > 100 ? "of " + rawCmd.Body.Length + " bytes" : BitConverter.ToString(rawCmd.Body);
-                    Log.Debug("{0} - Received command {1} with content {2}", Endpoint, rawCmd.Name, payloadStr);
+                    Log.Trace("{0} - Received command {1} with content {2}", Endpoint, rawCmd.Name, payloadStr);
 
                     var cmd = CommandParser.Parse(_protocolVersion ?? ProtocolVersion.Minimum, rawCmd);
                     if (cmd is VersionCommand verCmd)
@@ -229,6 +228,10 @@ namespace LibAtem.Net
             catch (ArgumentException)
             {
                 //discard as was malformed
+                return new List<ICommand>();
+            }
+            catch (OperationCanceledException)
+            {
                 return new List<ICommand>();
             }
         }
