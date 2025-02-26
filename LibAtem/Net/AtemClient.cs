@@ -239,14 +239,13 @@ namespace LibAtem.Net
             DataTransfer?.Dispose();
             _run = false;
             _shutdownTokenSource.Cancel();
-            _receiveThread?.Join();
-            _sendThread?.Join();
-            _handleThread?.Join();
-
             _timeoutTimer?.Dispose();
             _ackTimer?.Dispose();
             _client.Dispose();
             _connection.Dispose();
+            _receiveThread?.Join();
+            _sendThread?.Join();
+            _handleThread?.Join();
         }
 
         public bool HasQueuedOutbound()
