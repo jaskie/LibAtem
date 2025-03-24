@@ -181,11 +181,11 @@ namespace LibAtem.Net
 
         private void ReceiveThreadProc()
         {
+            IPEndPoint ep = _remoteEp;
             while (_run)
             {
                 try
                 {
-                    IPEndPoint ep = _remoteEp;
                     byte[] data = _client.Receive(ref ep);
 
                     ReceivedPacket packet = new ReceivedPacket(data);
@@ -207,9 +207,16 @@ namespace LibAtem.Net
 
                     _connection.Receive(_client.Client, packet);
                 }
-                catch (SocketException)
+                catch (SocketException e)
                 {
-                    Log.Error("Socket Exception");
+                    if (e.SocketErrorCode == SocketError.Interrupted)
+                    {
+                        Log.Debug("Connection interrupted");
+                    }
+                    else
+                    {
+                        Log.Error(e, "Socket Exception");
+                    }
                 }
             }
         }

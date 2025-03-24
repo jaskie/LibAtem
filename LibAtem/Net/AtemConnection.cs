@@ -9,7 +9,6 @@ using LibAtem.Commands.DeviceProfile;
 using LibAtem.MacroOperations;
 using LibAtem.Serialization;
 using LibAtem.Util;
-using System.Diagnostics;
 using System.Threading;
 
 namespace LibAtem.Net
@@ -219,7 +218,7 @@ namespace LibAtem.Net
 
                     if (cmd == null)
                     {
-                        Debug.WriteLine($"Received unknown command {rawCmd.Name} with content {payloadStr}");
+                        Log.Debug("{0} - Received unknown command {1} with content {2}", Endpoint, rawCmd.Name, payloadStr);
                     }
                 }
 

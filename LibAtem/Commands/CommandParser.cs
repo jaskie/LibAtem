@@ -11,7 +11,7 @@ namespace LibAtem.Commands
             Type commandType = CommandManager.FindForName(rawCmd.Name, protocolVersion);
             if (commandType == null)
             {
-                Log.Warn("Unknown command {0} with content {1}", rawCmd.Name, BitConverter.ToString(rawCmd.Body));
+                Log.Debug("Unknown command {0} with content {1}", rawCmd.Name, BitConverter.ToString(rawCmd.Body));
                 return null;
             }
 
